@@ -1,6 +1,10 @@
 import { useVote } from '../context/VoteContext';
 
-export default function Header() {
+interface HeaderProps {
+  onNavigate?: () => void;
+}
+
+export default function Header({ onNavigate }: HeaderProps) {
   const { currentUser, resetVote } = useVote();
 
   return (
@@ -34,6 +38,15 @@ export default function Header() {
               >
                 <i className="fas fa-rotate-right" />
                 重置
+              </button>
+            )}
+            {onNavigate && (
+              <button
+                onClick={onNavigate}
+                className="flex items-center gap-1 bg-white/20 hover:bg-white/30 px-[10px] py-1.5 rounded-full text-xs font-semibold transition-all"
+              >
+                <i className="fas fa-route" />
+                行程详情
               </button>
             )}
           </div>

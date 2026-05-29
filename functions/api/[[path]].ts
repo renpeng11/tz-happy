@@ -1,8 +1,4 @@
-type Env = {
-  DB: D1Database;
-};
-
-export const onRequest: PagesFunction<Env> = async (context) => {
+export const onRequest = async (context: any) => {
   const { request, env } = context;
   const url = new URL(request.url);
   const path = url.pathname;
@@ -243,17 +239,90 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       });
     }
 
+    // GET /api/expenses - 获取花销列表
+    if (method === 'GET' && path === '/api/expenses') {
+      const routeId = parseInt(url.searchParams.get('routeId') || '1');
+
+      const { results } = await db.prepare(
+        "SELECT * FROM expenses WHERE route_id = ? ORDER BY day, created_at",
+      )
+        .bind(routeId)
+        .all();
+
+      return new Response(JSON.stringify(results), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // POST /api/expenses - 添加花销
+    if (method === 'POST' && path === '/api/expenses') {
+      const { routeId, day, name, amount, category, time, userId, userName, userAvatar } = await request.json();
+
+      if (!routeId || !day || !name || !amount || !category) {
+        return new Response(JSON.stringify({ error: "Missing required fields" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      const result = await db.prepare(
+        "INSERT INTO expenses (route_id, day, name, amount, category, time, user_id, user_name, user_avatar) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+        .bind(routeId, day, name, amount, category, time, userId, userName, userAvatar)
+        .run();
+
+      return new Response(JSON.stringify({
+        success: true,
+        id: result.meta.last_row_id,
+      }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // DELETE /api/expenses/:id - 删除单条花销
+    if (method === 'DELETE' && path.match(/^\/api\/expenses\/\d+$/)) {
+      const expenseId = parseInt(path.split('/').pop() || '0');
+
+      if (!expenseId) {
+        return new Response(JSON.stringify({ error: "Invalid expense ID" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      await db.prepare("DELETE FROM expenses WHERE id = ?")
+        .bind(expenseId)
+        .run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    // DELETE /api/expenses/all - 清空所有花销
+    if (method === 'DELETE' && path === '/api/expenses/all') {
+      const routeId = parseInt(url.searchParams.get('routeId') || '1');
+
+      await db.prepare("DELETE FROM expenses WHERE route_id = ?")
+        .bind(routeId)
+        .run();
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
     // 404 Not Found
     return new Response(JSON.stringify({ error: "Not found" }), {
       status: 404,
       headers: { "Content-Type": "application/json" }
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error("Server error:", error);
     return new Response(JSON.stringify({
       error: "Internal server error",
-      details: error.message
+      details: error?.message || "Unknown error"
     }), {
       status: 500,
       headers: { "Content-Type": "application/json" }
