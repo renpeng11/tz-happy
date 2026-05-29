@@ -8,4 +8,12 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  server: {
+    proxy: {
+      '/api': {
+        target: 'https://tz-strategy-vote.pages.dev',
+        changeOrigin: true,
+      },
+    },
+  },
 })
