@@ -1,0 +1,12 @@
+name = "tz-strategy-vote"
+compatibility_date = "2024-02-08"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tz-strategy-db"
+database_id = "189fef50-e3fa-46ed-872c-a5c7e2690a10"
+
+pages_build_output_dir = "dist"
+
+[pages]
+  project_name = "tz-strategy-vote"
