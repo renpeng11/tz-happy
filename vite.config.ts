@@ -11,7 +11,8 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://tz-strategy-vote.pages.dev',
+        // target: 'https://tz-strategy-vote.pages.dev',
+        target: 'https://pre.tz-strategy-vote.pages.dev',
         changeOrigin: true,
       },
     },

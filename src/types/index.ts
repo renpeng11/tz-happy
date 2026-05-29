@@ -56,3 +56,26 @@ export interface VoteContextType {
   clearAllVotes: () => Promise<void>;
   login: () => Promise<void>;
 }
+
+export interface ExpenseItem {
+  id: string;
+  name: string;
+  amount: number;
+  category: string;
+  time: string;
+  userId: string;
+  userName: string;
+  userAvatar: string;
+}
+
+export interface DayExpense {
+  day: number;
+  expenses: ExpenseItem[];
+  total: number;
+}
+
+export interface RouteExpenses {
+  routeId: number;
+  days: DayExpense[];
+  total: number;
+}

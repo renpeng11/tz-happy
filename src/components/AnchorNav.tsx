@@ -5,7 +5,11 @@ interface NavItem {
   label: string;
 }
 
-export default function AnchorNav() {
+interface AnchorNavProps {
+  isHidden?: boolean;
+}
+
+export default function AnchorNav({ isHidden = false }: AnchorNavProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   const navItems: NavItem[] = [
@@ -36,7 +40,7 @@ export default function AnchorNav() {
 
   return (
     <>
-      <div className="anchor-nav fixed left-3 top-1/2 -translate-y-1/2 z-[999]" id="anchorNav">
+      <div className={`anchor-nav fixed left-3 top-1/2 -translate-y-1/2 z-[999] transition-all duration-300 ${isHidden ? 'opacity-0 invisible pointer-events-none' : 'opacity-100 visible'}`} id="anchorNav">
         <button
           onClick={() => setIsOpen(!isOpen)}
           className={`anchor-nav-toggle w-12 h-12 rounded-full bg-gradient-to-r from-primary to-secondary text-white border-none cursor-pointer flex items-center justify-center text-xl shadow-lg transition-all duration-300 hover:scale-110 ${isOpen ? 'bg-gradient-to-r from-accent to-pink-400' : ''}`}
@@ -55,7 +59,7 @@ export default function AnchorNav() {
           ))}
         </div>
       </div>
-      {isOpen && (
+      {isOpen && !isHidden && (
         <div className="fixed inset-0 z-[998]" onClick={handleClickOutside} />
       )}
     </>

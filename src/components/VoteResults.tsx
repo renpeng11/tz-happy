@@ -16,10 +16,15 @@ export default function VoteResults() {
 
   useEffect(() => {
     if (!isLoading && !hasShownOnce) {
-      const totalVotes = Object.values(voteData).reduce((sum, votes) => sum + votes, 0);
-      if (totalVotes > 0) {
-        setShowWinnerModal(true);
-        setHasShownOnce(true);
+      const navigatedFromVote = sessionStorage.getItem('navigatedFromVote');
+      sessionStorage.removeItem('navigatedFromVote');
+
+      if (!navigatedFromVote) {
+        const totalVotes = Object.values(voteData).reduce((sum, votes) => sum + votes, 0);
+        if (totalVotes > 0) {
+          setShowWinnerModal(true);
+          setHasShownOnce(true);
+        }
       }
     }
   }, [isLoading, hasShownOnce, voteData]);
@@ -128,7 +133,7 @@ export default function VoteResults() {
           </button>
         </div>
       </div>
-      
+
       <WinnerModal
         isOpen={showWinnerModal}
         onClose={() => setShowWinnerModal(false)}

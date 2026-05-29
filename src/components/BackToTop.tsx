@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 
-export default function BackToTop() {
+interface BackToTopProps {
+  isHidden?: boolean;
+}
+
+export default function BackToTop({ isHidden = false }: BackToTopProps) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
@@ -19,7 +23,7 @@ export default function BackToTop() {
   return (
     <button
       onClick={scrollToTop}
-      className={`back-to-top-btn fixed bottom-6 right-6 w-12 h-12 rounded-full bg-gradient-to-r from-primary to-secondary text-white border-none cursor-pointer flex items-center justify-center text-xl shadow-lg z-[1000] transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${isVisible ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
+      className={`back-to-top-btn fixed bottom-6 right-6 w-12 h-12 rounded-full bg-gradient-to-r from-primary to-secondary text-white border-none cursor-pointer flex items-center justify-center text-xl shadow-lg z-[1000] transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${isHidden ? 'opacity-0 invisible pointer-events-none' : isVisible ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
     >
       <i className="fas fa-arrow-up" />
     </button>

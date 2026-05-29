@@ -8,7 +8,7 @@
     "build": "vite build",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler pages deploy dist --project-name tz-strategy-vote",
+    "deploy": "vite build && wrangler pages deploy dist --project-name tz-strategy-vote --commit-message \"deploy\"",
     "db:create": "wrangler d1 create tz-strategy-db",
     "db:migrate": "wrangler d1 migrations apply tz-strategy-db --remote"
   },
