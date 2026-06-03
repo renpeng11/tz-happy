@@ -4,9 +4,10 @@ import { useVote } from '../context/VoteContext';
 
 interface ItineraryHeaderProps {
   onNavigate?: () => void;
+  onOpenPoem?: () => void;
 }
 
-export default function ItineraryHeader({ onNavigate }: ItineraryHeaderProps) {
+export default function ItineraryHeader({ onNavigate, onOpenPoem }: ItineraryHeaderProps) {
   const { voteData, currentUser } = useVote();
   const [countdown, setCountdown] = useState({
     days: 0,
@@ -107,8 +108,31 @@ export default function ItineraryHeader({ onNavigate }: ItineraryHeaderProps) {
                   </div>
                 </div>
               </div>
-              <div className="text-center mt-2">
-                <span className="text-xs opacity-70">出发时间：2026年6月17日（端午节）08:00</span>
+              <div className="flex flex-wrap items-center justify-center gap-4 mt-3 pt-3 border-t border-white/20">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <i className="fas fa-clock text-sky-200" />
+                  <span className="opacity-80">集合</span>
+                  <span className="font-bold">8:00</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <i className="fas fa-map-marker-alt text-sky-200" />
+                  <span className="opacity-80">地点</span>
+                  <span className="font-bold">红柿苑</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <i className="fas fa-car text-sky-200" />
+                  <span className="opacity-80">出发</span>
+                  <span className="font-bold">8:30</span>
+                </div>
+                {onOpenPoem && (
+                  <button
+                    onClick={onOpenPoem}
+                    className="bg-gradient-to-r from-emerald-400 to-teal-400 text-white text-xs font-semibold px-3 py-1 rounded-lg hover:shadow-md transition-all flex items-center gap-1"
+                  >
+                    <i className="fas fa-book-open" />
+                    背诗免门票
+                  </button>
+                )}
               </div>
             </div>
           </div>

@@ -286,22 +286,20 @@ export default function ItineraryDetail() {
                 setCurrentDay(day.day);
                 setShowAllDays(false);
               }}
-              className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-                !showAllDays && currentDay === day.day
-                  ? "bg-gradient-to-r from-primary to-secondary text-white shadow-lg"
-                  : "bg-sky-100 text-textLight hover:bg-sky-200"
-              }`}
+              className={`px-4 py-2 rounded-lg font-semibold transition-all ${!showAllDays && currentDay === day.day
+                ? "bg-gradient-to-r from-primary to-secondary text-white shadow-lg"
+                : "bg-sky-100 text-textLight hover:bg-sky-200"
+                }`}
             >
               Day{day.day}
             </button>
           ))}
           <button
             onClick={() => setShowAllDays(true)}
-            className={`px-4 py-2 rounded-lg font-semibold transition-all ${
-              showAllDays
-                ? "bg-gradient-to-r from-primary to-secondary text-white shadow-lg"
-                : "bg-sky-100 text-textLight hover:bg-sky-200"
-            }`}
+            className={`px-4 py-2 rounded-lg font-semibold transition-all ${showAllDays
+              ? "bg-gradient-to-r from-primary to-secondary text-white shadow-lg"
+              : "bg-sky-100 text-textLight hover:bg-sky-200"
+              }`}
           >
             全部
           </button>
