@@ -107,6 +107,43 @@ export default function ExpenseChart({ expenses, onDeleteExpense, onClearAll }: 
     },
   };
 
+  const userExpenses = expenses.days.reduce((acc, day) => {
+    day.expenses.forEach(expense => {
+      const userName = expense.userName || '未知用户';
+      if (!acc[userName]) {
+        acc[userName] = {
+          amount: 0,
+          avatar: expense.userAvatar,
+        };
+      }
+      acc[userName].amount += expense.amount;
+    });
+    return acc;
+  }, {} as Record<string, { amount: number; avatar?: string }>);
+
+  const userLabels = Object.keys(userExpenses);
+  const userAmounts = userLabels.map(name => userExpenses[name].amount);
+  const userColors = [
+    '#ec4899',
+    '#8b5cf6',
+    '#06b6d4',
+    '#10b981',
+    '#f59e0b',
+    '#ef4444',
+  ];
+
+  const userData = {
+    labels: userLabels,
+    datasets: [
+      {
+        label: '用户花销',
+        data: userAmounts,
+        backgroundColor: userColors.slice(0, userLabels.length),
+        borderRadius: 6,
+      },
+    ],
+  };
+
   return (
     <div className="pb-6">
       <div className="space-y-6">
@@ -117,6 +154,16 @@ export default function ExpenseChart({ expenses, onDeleteExpense, onClearAll }: 
           </h3>
           <div className="h-[200px]">
             <Bar data={dailyData} options={options} />
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl p-6 shadow-md">
+          <h3 className="text-lg font-bold text-text mb-4 flex items-center gap-2">
+            <i className="fas fa-users text-primary" />
+            用户花销统计
+          </h3>
+          <div className="h-[200px]">
+            <Bar data={userData} options={options} />
           </div>
         </div>
 
