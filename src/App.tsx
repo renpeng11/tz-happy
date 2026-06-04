@@ -11,12 +11,14 @@ import AnchorNav from './components/AnchorNav';
 import RouteDetailModal from './components/RouteDetailModal';
 import ItineraryDetail from './components/ItineraryDetail';
 import PoemModal from './components/PoemModal';
+import DecisionModal from './components/DecisionModal';
 import type { RouteData } from './types';
 
 function AppContent() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedRoute, setSelectedRoute] = useState<RouteData | null>(null);
   const [showPoemModal, setShowPoemModal] = useState(false);
+  const [showDecisionModal, setShowDecisionModal] = useState(false);
   const [currentPage, setCurrentPage] = useState<'vote' | 'itinerary'>(() => {
     const now = new Date();
     const cutoffDate = new Date('2026-05-30T00:00:00');
@@ -44,7 +46,11 @@ function AppContent() {
           setCurrentPage('itinerary');
         }} />
       ) : (
-        <ItineraryHeader onNavigate={() => setCurrentPage('vote')} onOpenPoem={() => setShowPoemModal(true)} />
+        <ItineraryHeader
+          onNavigate={() => setCurrentPage('vote')}
+          onOpenPoem={() => setShowPoemModal(true)}
+          onOpenDecision={() => setShowDecisionModal(true)}
+        />
       )}
       <main className="container mx-auto px-3 md:px-5 max-w-7xl">
         {currentPage === 'vote' ? (
@@ -67,6 +73,7 @@ function AppContent() {
         route={selectedRoute}
       />
       <PoemModal isOpen={showPoemModal} onClose={() => setShowPoemModal(false)} />
+      <DecisionModal isOpen={showDecisionModal} onClose={() => setShowDecisionModal(false)} />
     </div>
   );
 }

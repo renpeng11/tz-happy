@@ -5,9 +5,10 @@ import { useVote } from '../context/VoteContext';
 interface ItineraryHeaderProps {
   onNavigate?: () => void;
   onOpenPoem?: () => void;
+  onOpenDecision?: () => void;
 }
 
-export default function ItineraryHeader({ onNavigate, onOpenPoem }: ItineraryHeaderProps) {
+export default function ItineraryHeader({ onNavigate, onOpenPoem, onOpenDecision }: ItineraryHeaderProps) {
   const { voteData, currentUser } = useVote();
   const [countdown, setCountdown] = useState({
     days: 0,
@@ -131,6 +132,15 @@ export default function ItineraryHeader({ onNavigate, onOpenPoem }: ItineraryHea
                   >
                     <i className="fas fa-book-open" />
                     背诗免门票
+                  </button>
+                )}
+                {onOpenDecision && (
+                  <button
+                    onClick={onOpenDecision}
+                    className="bg-gradient-to-r from-purple-400 to-pink-400 text-white text-xs font-semibold px-3 py-1 rounded-lg hover:shadow-md transition-all flex items-center gap-1"
+                  >
+                    <i className="fas fa-question-circle" />
+                    遇事不决
                   </button>
                 )}
               </div>
