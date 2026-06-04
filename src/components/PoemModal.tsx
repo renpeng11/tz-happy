@@ -1,5 +1,11 @@
 import { useState } from 'react';
 
+/**
+ * 端午节不可用
+ * 此弹窗显示的是李白的《梦游天姥吟留别》，与端午节无关
+ * 端午节（农历五月初五）应禁用此功能
+ */
+
 interface PoemModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -66,6 +72,12 @@ export default function PoemModal({ isOpen, onClose }: PoemModalProps) {
           <button onClick={onClose} className="text-textLight hover:text-text transition-colors">
             <i className="fas fa-times text-xl" />
           </button>
+        </div>
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-center gap-2 text-red-600 text-sm">
+            <i className="fas fa-exclamation-triangle" />
+            <span>端午节不可用</span>
+          </div>
         </div>
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl p-6 max-h-[calc(85vh-80px)] overflow-y-auto scrollbar-hide">
           <style>{`
