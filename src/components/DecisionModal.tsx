@@ -387,6 +387,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     setCurrentDecisionId(null);
     setDecisionOptions([]);
     setUserVoted(null);
+    setIsSpinning(false);
+    setIsSpinningCompleted(false);
+    setSelectedOptionId(null);
+    setVoteMode("direct");
     onClose();
   };
 
@@ -423,6 +427,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
       setCurrentDecisionId(null);
       setDecisionOptions([]);
       setUserVoted(null);
+      setIsSpinning(false);
+      setIsSpinningCompleted(false);
+      setSelectedOptionId(null);
+      setVoteMode("direct");
       loadDecisions();
     }
   };
@@ -455,31 +463,33 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
+            {(viewMode === "create" ||
+              viewMode === "vote" ||
+              viewMode === "result") && (
+              <button
+                onClick={handleBack}
+                className="text-textLight hover:text-text transition-colors"
+              >
+                <i className="fas fa-arrow-left" />
+              </button>
+            )}
             <i className="fas fa-question-circle text-purple-500 text-2xl" />
             <h3 className="text-xl font-bold text-text">
               {viewMode === "list"
                 ? "遇事不决？"
                 : viewMode === "create"
                   ? "创建投票"
-                  : "投票"}
+                  : viewMode === "result"
+                    ? "投票结果"
+                    : "投票"}
             </h3>
           </div>
-          <div className="flex items-center gap-2">
-            {(viewMode === "create" || viewMode === "vote") && (
-              <button
-                onClick={handleBack}
-                className="text-textLight hover:text-text transition-colors mr-2"
-              >
-                <i className="fas fa-arrow-left" />
-              </button>
-            )}
-            <button
-              onClick={handleClose}
-              className="text-textLight hover:text-text transition-colors"
-            >
-              <i className="fas fa-times text-xl" />
-            </button>
-          </div>
+          <button
+            onClick={handleClose}
+            className="text-textLight hover:text-text transition-colors"
+          >
+            <i className="fas fa-times text-xl" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto scrollbar-hide">
@@ -741,7 +751,11 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                           我有想法
                         </button>
                         <button
-                          onClick={() => setVoteMode("random")}
+                          onClick={() => {
+                            setVoteMode("random");
+                            setIsSpinningCompleted(false);
+                            setSelectedOptionId(null);
+                          }}
                           className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
                             voteMode === "random"
                               ? "bg-white text-text shadow-sm"
@@ -768,10 +782,6 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                     {(userVoted || voteMode === "direct") && (
                       <>
                         {decisionOptions.map((option) => {
-                          const percentage =
-                            totalVotes > 0
-                              ? Math.round((option.votes / totalVotes) * 100)
-                              : 0;
                           const isSelected = userVoted === option.id;
                           const expired = currentDecision
                             ? isExpired(currentDecision)
@@ -793,30 +803,17 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                                   : "bg-sky-50 hover:bg-sky-100"
                               } ${userVoted || isLoading || expired || voteMode === "random" ? "cursor-default" : "hover:shadow-sm"}`}
                             >
-                              <div className="flex-1">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-text font-medium">
-                                    {option.text}
-                                  </span>
-                                  {userVoted && (
-                                    <span className="text-purple-500 font-semibold text-sm">
-                                      {percentage}%
-                                    </span>
-                                  )}
-                                </div>
-                                {userVoted && (
-                                  <div className="w-full bg-sky-100 rounded-full h-1.5">
-                                    <div
-                                      className="bg-purple-400 h-1.5 rounded-full transition-all"
-                                      style={{ width: `${percentage}%` }}
-                                    />
-                                  </div>
-                                )}
-                              </div>
-                              {userVoted && option.votes > 0 && (
-                                <span className="ml-2 text-xs text-textLight">
-                                  {option.votes}票
+                              <div className="flex items-center gap-2">
+                                <span className="text-text font-medium">
+                                  {option.text}
                                 </span>
+                              </div>
+                              {userVoted && (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-textLight">
+                                    {option.votes} 票
+                                  </span>
+                                </div>
                               )}
                             </button>
                           );
@@ -954,50 +951,28 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                         )}
 
                         {isSpinningCompleted && (
-                          <div className="space-y-3 mt-4">
-                            <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4 text-center">
-                              <div className="text-green-600 font-semibold text-lg mb-1">
-                                🎉 结果已出！
-                              </div>
-                              <div className="text-green-700 font-bold text-xl">
-                                {decisionOptions.find(
-                                  (o) => o.id === selectedOptionId,
-                                )?.text || ""}
-                              </div>
-                            </div>
-                            <div className="flex gap-3">
-                              <button
-                                onClick={() => {
-                                  setIsSpinningCompleted(false);
-                                  setSelectedOptionId(null);
-                                }}
-                                className="flex-1 bg-gray-100 text-text font-semibold py-3 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
-                              >
-                                <i className="fas fa-redo" />
-                                重新转动
-                              </button>
-                              <button
-                                onClick={confirmVote}
-                                disabled={isLoading}
-                                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                              >
-                                <i className="fas fa-check" />
-                                确认投票
-                              </button>
-                            </div>
+                          <div className="flex gap-3 mt-4">
+                            <button
+                              onClick={handleSpinWheel}
+                              disabled={isLoading}
+                              className="flex-1 bg-gray-100 text-text font-semibold py-3 rounded-xl hover:bg-gray-200 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              <i className="fas fa-redo" />
+                              重新转动
+                            </button>
+                            <button
+                              onClick={confirmVote}
+                              disabled={isLoading}
+                              className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                              <i className="fas fa-check" />
+                              确认投票
+                            </button>
                           </div>
                         )}
                       </div>
                     )}
                   </div>
-
-                  <button
-                    onClick={handleBack}
-                    disabled={isLoading}
-                    className="w-full py-2 border border-sky-200 text-textLight rounded-xl hover:bg-sky-50 transition-all text-sm disabled:opacity-50"
-                  >
-                    返回列表
-                  </button>
                 </>
               )}
             </div>
@@ -1034,10 +1009,6 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
 
               <div className="space-y-3">
                 {decisionOptions.map((option) => {
-                  const percentage =
-                    totalVotes > 0
-                      ? Math.round((option.votes / totalVotes) * 100)
-                      : 0;
                   const isSelected = userVoted === option.id;
 
                   return (
@@ -1049,7 +1020,7 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                           : "bg-sky-50"
                       }`}
                     >
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {isSelected && (
                             <i className="fas fa-check-circle text-purple-500" />
@@ -1058,38 +1029,21 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                             {option.text}
                           </span>
                         </div>
-                        <span className="text-purple-500 font-semibold text-sm">
-                          {percentage}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-sky-100 rounded-full h-2">
-                        <div
-                          className={`h-2 rounded-full transition-all ${isSelected ? "bg-purple-500" : "bg-purple-300"}`}
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                      <div className="flex justify-between mt-1">
-                        <span className="text-xs text-textLight">
-                          {option.votes} 票
-                        </span>
-                        {isSelected && (
-                          <span className="text-xs text-purple-500 font-medium">
-                            你的选择
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-textLight">
+                            {option.votes} 票
                           </span>
-                        )}
+                          {isSelected && (
+                            <span className="text-xs text-purple-500 font-medium">
+                              你的选择
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
                 })}
               </div>
-
-              <button
-                onClick={handleBack}
-                disabled={isLoading}
-                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50"
-              >
-                返回投票列表
-              </button>
             </div>
           )}
         </div>
