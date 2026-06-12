@@ -392,9 +392,7 @@ export const onRequest = async (context: any) => {
         "1d": 24 * 60 * 60 * 1000,
       };
 
-      // 复用原来的 duration，如果没有则使用默认的 1d
-      const originalDuration = (originalDecision as any).duration;
-      const finalDuration = duration || originalDuration || "1d";
+      const finalDuration = duration || "1d";
       const durationMs =
         validDurations[finalDuration] || validDurations["1d"];
       const expiresAt = new Date(Date.now() + durationMs);
@@ -408,7 +406,7 @@ export const onRequest = async (context: any) => {
           description || "",
           userId,
           expiresAt.toISOString(),
-          duration || "1d",
+          finalDuration,
         )
         .run();
 

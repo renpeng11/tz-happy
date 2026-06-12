@@ -7,7 +7,18 @@ interface DecisionModalProps {
   onClose: () => void;
 }
 
-type ViewMode = "list" | "create" | "vote" | "result" | "announcement";
+type ViewMode = "list" | "create" | "vote" | "result" | "announcement" | "ai-create";
+
+interface AIMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface GeneratedVote {
+  title: string;
+  description: string;
+  options: string[];
+}
 
 const durationOptions = [
   { value: "1h", label: "1小时" },
@@ -103,6 +114,13 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
 
   const [shouldRefreshOnOpen, setShouldRefreshOnOpen] = useState(true);
 
+  // AI 创建相关状态
+  const [aiMessages, setAiMessages] = useState<AIMessage[]>([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [generatedVote, setGeneratedVote] = useState<GeneratedVote | null>(null);
+  const [aiSelectedDuration, setAiSelectedDuration] = useState("1d");
+
   useEffect(() => {
     if (isOpen && viewMode === "list" && shouldRefreshOnOpen) {
       setIsLoading(true);
@@ -165,6 +183,83 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     if (options.length < 6) {
       setOptions([...options, ""]);
     }
+  };
+
+  // AI 创建相关函数
+  const handleAISubmit = async () => {
+    if (!currentUser) {
+      alert("请先登录");
+      return;
+    }
+
+    if (!aiInput.trim()) {
+      return;
+    }
+
+    const userMessage = aiInput.trim();
+    setAiInput("");
+    setAiMessages((prev) => [...prev, { role: "user", content: userMessage }]);
+    setAiLoading(true);
+
+    try {
+      const result = await decisionApi.aiCreate({
+        userInput: userMessage,
+        userId: currentUser.id,
+        duration: aiSelectedDuration,
+      });
+
+      if (result.success) {
+        setGeneratedVote(result.generated);
+        setAiMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: `我帮你生成了一个投票方案：\n\n📌 标题：${result.generated.title}\n📝 说明：${result.generated.description}\n\n🎯 选项：\n${result.generated.options.map((o, i) => `${i + 1}. ${o}`).join("\n")}\n\n确认后我将创建这个投票。`,
+          },
+        ]);
+      }
+    } catch (error: any) {
+      setAiMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: `抱歉，生成投票时出现问题：${error?.message || "请稍后重试"}`,
+        },
+      ]);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleConfirmAIVote = async () => {
+    if (!currentUser || !generatedVote) return;
+
+    setIsLoading(true);
+    setViewMode("create");
+
+    try {
+      // 填充创建表单
+      setTitle(generatedVote.title);
+      setDescription(generatedVote.description);
+      setOptions(generatedVote.options.map((o) => o));
+      setSelectedDuration(aiSelectedDuration);
+
+      // 触发创建
+      await handleCreate();
+
+      // 重置 AI 状态
+      setGeneratedVote(null);
+      setAiMessages([]);
+    } catch (error) {
+      console.error("Failed to create vote:", error);
+      setViewMode("ai-create");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleCancelAIVote = () => {
+    setGeneratedVote(null);
   };
 
   const handleRemoveOption = (index: number) => {
@@ -385,6 +480,11 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     setSelectedOptionId(null);
     setVoteMode("direct");
     setShouldRefreshOnOpen(true);
+    // 重置 AI 状态
+    setAiMessages([]);
+    setAiInput("");
+    setGeneratedVote(null);
+    setAiSelectedDuration("1d");
     onClose();
   };
 
@@ -411,6 +511,12 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
       setDescription("");
       setSelectedDuration("1d");
       setOptions(["", ""]);
+    } else if (viewMode === "ai-create") {
+      setViewMode("list");
+      setAiMessages([]);
+      setAiInput("");
+      setGeneratedVote(null);
+      setAiSelectedDuration("1d");
     } else if (
       viewMode === "vote" ||
       viewMode === "result" ||
@@ -460,6 +566,7 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             {(viewMode === "create" ||
+              viewMode === "ai-create" ||
               viewMode === "vote" ||
               viewMode === "result" ||
               viewMode === "announcement") && (
@@ -476,11 +583,13 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                 ? "遇事不决？"
                 : viewMode === "create"
                   ? "创建投票"
-                  : viewMode === "result"
-                    ? "投票结果"
-                    : viewMode === "announcement"
-                      ? "投票结果公布"
-                      : "投票"}
+                  : viewMode === "ai-create"
+                    ? "AI 创建投票"
+                    : viewMode === "result"
+                      ? "投票结果"
+                      : viewMode === "announcement"
+                        ? "投票结果公布"
+                        : "投票"}
             </h3>
           </div>
           <button
@@ -583,14 +692,160 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                     </div>
                   )}
 
-                  <button
-                    onClick={() => setViewMode("create")}
-                    className="w-full py-3 border-2 border-dashed border-purple-200 text-purple-500 rounded-xl hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <i className="fas fa-plus" />
-                    创建新投票
-                  </button>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      onClick={() => setViewMode("create")}
+                      className="py-3 border-2 border-dashed border-purple-200 text-purple-500 rounded-xl hover:bg-purple-50 transition-colors flex items-center justify-center gap-2"
+                    >
+                      <i className="fas fa-plus" />
+                      创建投票
+                    </button>
+                    <button
+                      onClick={() => setViewMode("ai-create")}
+                      className="py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl hover:shadow-md transition-colors flex items-center justify-center gap-2"
+                    >
+                      <i className="fas fa-robot" />
+                      AI 创建
+                    </button>
+                  </div>
                 </>
+              )}
+            </div>
+          )}
+
+          {viewMode === "ai-create" && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm text-emerald-600 bg-emerald-50 p-3 rounded-lg">
+                <i className="fas fa-lightbulb" />
+                <span>告诉 AI 你想做什么，它会帮你生成投票选项</span>
+              </div>
+
+              {/* 时长选择 */}
+              <div>
+                <label className="text-xs text-textLight mb-2 block">
+                  投票有效时间
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {durationOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      onClick={() => setAiSelectedDuration(option.value)}
+                      className={`py-2 rounded-lg text-xs font-medium transition-colors ${aiSelectedDuration === option.value
+                        ? "bg-emerald-500 text-white"
+                        : "bg-sky-50 text-text hover:bg-sky-100"
+                        }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 聊天消息区域 */}
+              <div className="space-y-3 max-h-64 overflow-y-auto">
+                {aiMessages.length === 0 && (
+                  <div className="text-center text-textLight text-sm py-4">
+                    <i className="fas fa-comment-dots text-2xl mb-2 text-emerald-200" />
+                    <p>开始描述你想要投票的内容吧~</p>
+                    <p className="text-xs mt-1">
+                      例如："周末去爬山还是看海？"
+                    </p>
+                  </div>
+                )}
+                {aiMessages.map((msg, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${msg.role === "user"
+                        ? "bg-emerald-500 text-white"
+                        : "bg-sky-100 text-text"
+                        }`}
+                      style={{ whiteSpace: "pre-wrap" }}
+                    >
+                      {msg.content}
+                    </div>
+                  </div>
+                ))}
+                {aiLoading && (
+                  <div className="flex justify-start">
+                    <div className="bg-sky-100 text-text px-3 py-2 rounded-xl">
+                      <div className="flex items-center gap-2">
+                        <div className="flex gap-1">
+                          <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
+                          <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "150ms" }} />
+                          <span className="w-2 h-2 bg-emerald-400 rounded-full animate-bounce" style={{ animationDelay: "300ms" }} />
+                        </div>
+                        <span className="text-xs text-textLight">AI 思考中...</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* 生成投票预览 */}
+              {generatedVote && (
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                  <div className="font-semibold text-text">
+                    {generatedVote.title}
+                  </div>
+                  <div className="text-sm text-textLight">
+                    {generatedVote.description}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {generatedVote.options.map((option, index) => (
+                      <span
+                        key={index}
+                        className="bg-white px-3 py-1 rounded-full text-sm text-text border border-emerald-200"
+                      >
+                        {option}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button
+                      onClick={handleConfirmAIVote}
+                      disabled={isLoading}
+                      className="flex-1 bg-emerald-500 text-white py-2 rounded-lg text-sm font-medium hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                    >
+                      {isLoading ? "创建中..." : "确认创建"}
+                    </button>
+                    <button
+                      onClick={handleCancelAIVote}
+                      className="px-4 py-2 border border-gray-300 text-text rounded-lg text-sm hover:bg-gray-50 transition-colors"
+                    >
+                      重新生成
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 输入框 */}
+              {!generatedVote && (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={aiInput}
+                    onChange={(e) => setAiInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleAISubmit();
+                      }
+                    }}
+                    placeholder="描述你想投票的内容..."
+                    className="flex-1 px-3 py-2 border border-sky-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/50 text-sm"
+                    disabled={aiLoading}
+                  />
+                  <button
+                    onClick={handleAISubmit}
+                    disabled={aiLoading || !aiInput.trim()}
+                    className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <i className={`fas ${aiLoading ? "fa-spinner fa-spin" : "fa-paper-plane"}`} />
+                  </button>
+                </div>
               )}
             </div>
           )}
@@ -1225,60 +1480,62 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
       </div>
 
       {/* 确认投票弹窗 */}
-      {showConfirmModal && confirmOption && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => {
-            setShowConfirmModal(false);
-            setConfirmOption(null);
-          }}
-        >
+      {
+        showConfirmModal && confirmOption && (
           <div
-            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+            onClick={() => {
+              setShowConfirmModal(false);
+              setConfirmOption(null);
+            }}
           >
-            <div className="text-center">
-              <div className="text-5xl mb-4">🤔</div>
-              <h3 className="text-xl font-bold text-text mb-2">确认投票</h3>
-              <p className="text-textLight mb-6">
-                你确定要选择：
-                <br />
-                <span className="font-semibold text-purple-600">
-                  {confirmOption.text}
-                </span>
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowConfirmModal(false);
-                    setConfirmOption(null);
-                  }}
-                  className="flex-1 bg-gray-100 text-text font-semibold py-3 rounded-xl hover:bg-gray-200 transition-all"
-                >
-                  取消
-                </button>
-                <button
-                  onClick={confirmVote}
-                  disabled={isLoading}
-                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
-                      投票中...
-                    </>
-                  ) : (
-                    <>
-                      <i className="fas fa-check" />
-                      确认
-                    </>
-                  )}
-                </button>
+            <div
+              className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="text-center">
+                <div className="text-5xl mb-4">🤔</div>
+                <h3 className="text-xl font-bold text-text mb-2">确认投票</h3>
+                <p className="text-textLight mb-6">
+                  你确定要选择：
+                  <br />
+                  <span className="font-semibold text-purple-600">
+                    {confirmOption.text}
+                  </span>
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowConfirmModal(false);
+                      setConfirmOption(null);
+                    }}
+                    className="flex-1 bg-gray-100 text-text font-semibold py-3 rounded-xl hover:bg-gray-200 transition-all"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={confirmVote}
+                    disabled={isLoading}
+                    className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                        投票中...
+                      </>
+                    ) : (
+                      <>
+                        <i className="fas fa-check" />
+                        确认
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   );
 }

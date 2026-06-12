@@ -7,18 +7,25 @@
     "dev": "vite",
     "dev:prod": "vite --mode production",
     "build": "vite build",
+    "build:functions": "node scripts/build-functions.mjs",
+    "build:all": "pnpm run build && pnpm run build:functions",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
-    "deploy": "vite build && wrangler pages deploy dist --project-name tz-strategy-vote --commit-message \"deploy\"",
+    "deploy": "vite build && node scripts/build-functions.mjs && wrangler pages deploy dist --project-name tz-strategy-vote --commit-message \"deploy\"",
     "db:create": "wrangler d1 create tz-strategy-db",
     "db:migrate": "wrangler d1 migrations apply tz-strategy-db --remote"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.48",
+    "@langchain/langgraph": "^1.4.1",
+    "@langchain/openai": "^1.4.7",
     "chart.js": "^4.4.1",
+    "langchain": "^1.4.4",
     "lucide-react": "^0.363.0",
     "react": "^18.2.0",
     "react-chartjs-2": "^5.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
@@ -28,6 +35,7 @@
     "@typescript-eslint/parser": "^7.5.0",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.18",
+    "esbuild": "^0.24.0",
     "eslint": "^8.57.0",
     "eslint-plugin-react": "^7.34.1",
     "eslint-plugin-react-hooks": "^4.6.0",
@@ -36,5 +44,16 @@
     "tailwindcss": "^3.4.1",
     "typescript": "^5.4.5",
     "vite": "^5.2.0"
+  },
+  "pnpm": {
+    "overrides": {
+      "langchain": "^1.4.4",
+      "@langchain/core": "^1.1.48",
+      "@langchain/langgraph": "^1.4.1",
+      "@langchain/openai": "^1.4.7"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
   }
 }

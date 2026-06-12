@@ -65,4 +65,16 @@ export const decisionApi = {
   /** 删除决策 */
   remove: (id: number) =>
     apiDelete<{ success: boolean }>(`/api/decisions/${id}`),
+
+  /** 通过 AI 根据用户描述创建投票 */
+  aiCreate: (data: {
+    userInput: string;
+    userId: number;
+    duration?: string;
+  }) =>
+    apiPost<{
+      success: boolean;
+      decisionId: number;
+      generated: { title: string; description: string; options: string[] };
+    }>('/api/decisions/ai-create', data),
 };
