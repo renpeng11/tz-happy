@@ -1,12 +1,6 @@
 import { useState, useEffect } from "react";
 import { useVote } from "../context/VoteContext";
-
-interface ChecklistItem {
-  id: number;
-  name: string;
-  is_checked: number;
-  created_at: string;
-}
+import { checklistApi, type ChecklistItem } from "../api";
 
 interface ChecklistModalProps {
   isOpen: boolean;
@@ -34,11 +28,7 @@ export default function ChecklistModal({
       setIsInitialLoading(true);
     }
     try {
-      const url = currentUser?.id
-        ? `/api/checklist?userId=${currentUser.id}`
-        : "/api/checklist";
-      const response = await fetch(url);
-      const data = await response.json();
+      const data = await checklistApi.getList(currentUser?.id);
       setItems(data);
     } catch (error) {
       console.error("Failed to load checklist:", error);
@@ -54,15 +44,9 @@ export default function ChecklistModal({
 
     setIsLoading(true);
     try {
-      const response = await fetch("/api/checklist", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: newItemName.trim(),
-        }),
-      });
+      const data = await checklistApi.add(newItemName.trim());
 
-      if (response.ok) {
+      if (data.success) {
         setNewItemName("");
         await loadChecklist(false);
       }
@@ -77,15 +61,9 @@ export default function ChecklistModal({
     if (!currentUser?.id) return;
 
     try {
-      const response = await fetch(`/api/checklist/${itemId}/toggle`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: currentUser.id,
-        }),
-      });
+      const data = await checklistApi.toggle(itemId, currentUser.id);
 
-      if (response.ok) {
+      if (data.success) {
         await loadChecklist(false);
       }
     } catch (error) {
@@ -97,11 +75,9 @@ export default function ChecklistModal({
     if (!confirm("确定要删除这个项目吗？")) return;
 
     try {
-      const response = await fetch(`/api/checklist/${itemId}`, {
-        method: "DELETE",
-      });
+      const data = await checklistApi.remove(itemId);
 
-      if (response.ok) {
+      if (data.success) {
         await loadChecklist(false);
       }
     } catch (error) {
@@ -199,19 +175,17 @@ export default function ChecklistModal({
               {items.map((item) => (
                 <div
                   key={item.id}
-                  className={`flex items-center gap-3 p-3 rounded-lg transition-all ${
-                    item.is_checked === 1
-                      ? "bg-green-50 border border-green-200"
-                      : "bg-sky-50 hover:bg-sky-100"
-                  }`}
+                  className={`flex items-center gap-3 p-3 rounded-lg transition-all ${item.is_checked === 1
+                    ? "bg-green-50 border border-green-200"
+                    : "bg-sky-50 hover:bg-sky-100"
+                    }`}
                 >
                   <button
                     onClick={() => handleToggleItem(item.id)}
-                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${
-                      item.is_checked === 1
-                        ? "bg-green-500 border-green-500 text-white"
-                        : "border-gray-300 hover:border-purple-500"
-                    }`}
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all ${item.is_checked === 1
+                      ? "bg-green-500 border-green-500 text-white"
+                      : "border-gray-300 hover:border-purple-500"
+                      }`}
                   >
                     {item.is_checked === 1 && (
                       <i className="fas fa-check text-xs" />
@@ -220,11 +194,10 @@ export default function ChecklistModal({
 
                   <div className="flex-1">
                     <span
-                      className={`font-medium ${
-                        item.is_checked === 1
-                          ? "text-gray-400 line-through"
-                          : "text-text"
-                      }`}
+                      className={`font-medium ${item.is_checked === 1
+                        ? "text-gray-400 line-through"
+                        : "text-text"
+                        }`}
                     >
                       {item.name}
                     </span>

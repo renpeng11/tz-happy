@@ -392,15 +392,24 @@ export const onRequest = async (context: any) => {
         "1d": 24 * 60 * 60 * 1000,
       };
 
+      // 复用原来的 duration，如果没有则使用默认的 1d
+      const originalDuration = (originalDecision as any).duration;
+      const finalDuration = duration || originalDuration || "1d";
       const durationMs =
-        validDurations[duration || "1d"] || validDurations["1d"];
+        validDurations[finalDuration] || validDurations["1d"];
       const expiresAt = new Date(Date.now() + durationMs);
 
       const decisionResult = await db
         .prepare(
-          "INSERT INTO decisions (title, description, created_by, expires_at) VALUES (?, ?, ?, ?)",
+          "INSERT INTO decisions (title, description, created_by, expires_at, duration) VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(title || "", description || "", userId, expiresAt.toISOString())
+        .bind(
+          title || "",
+          description || "",
+          userId,
+          expiresAt.toISOString(),
+          duration || "1d",
+        )
         .run();
 
       const decisionId = decisionResult.meta.last_row_id as number;
@@ -780,6 +789,204 @@ export const onRequest = async (context: any) => {
           hasVoted: !!vote,
           votedOptionId: vote ? (vote as any).option_id : null,
         }),
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // POST /api/decisions/:id/reopen - 重新开启已结束的投票
+    if (method === "POST" && path.match(/^\/api\/decisions\/\d+\/reopen$/)) {
+      const parts = path.split("/");
+      const decisionId = parseInt(parts[parts.length - 2] || "0");
+      const { userId, duration } = await request.json();
+
+      if (!decisionId) {
+        return new Response(JSON.stringify({ error: "Invalid decision ID" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!userId) {
+        return new Response(JSON.stringify({ error: "User not logged in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // 获取原投票信息
+      const originalDecision = await db
+        .prepare("SELECT * FROM decisions WHERE id = ?")
+        .bind(decisionId)
+        .first();
+
+      if (!originalDecision) {
+        return new Response(JSON.stringify({ error: "Decision not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // 获取原投票选项
+      const { results: originalOptions } = await db
+        .prepare(
+          "SELECT text FROM decision_options WHERE decision_id = ? ORDER BY id",
+        )
+        .bind(decisionId)
+        .all();
+
+      const validDurations: Record<string, number> = {
+        "1h": 60 * 60 * 1000,
+        "3h": 3 * 60 * 60 * 1000,
+        "5h": 5 * 60 * 60 * 1000,
+        "1d": 24 * 60 * 60 * 1000,
+      };
+
+      // 复用原来的 duration，如果没有则使用默认的 1d
+      const originalDuration = (originalDecision as any).duration;
+      const finalDuration = duration || originalDuration || "1d";
+      const durationMs =
+        validDurations[finalDuration] || validDurations["1d"];
+      const expiresAt = new Date(Date.now() + durationMs);
+
+      // 创建新投票
+      const decisionResult = await db
+        .prepare(
+          "INSERT INTO decisions (title, description, created_by, expires_at, duration) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(
+          (originalDecision as any).title || "",
+          (originalDecision as any).description || "",
+          userId,
+          expiresAt.toISOString(),
+          finalDuration
+        )
+        .run();
+
+      const newDecisionId = decisionResult.meta.last_row_id as number;
+
+      // 更新新投票的创建时间
+      await db
+        .prepare("UPDATE decisions SET created_at = ? WHERE id = ?")
+        .bind(new Date().toISOString(), newDecisionId)
+        .run();
+
+      // 复制原投票的所有选项
+      for (const optionRow of originalOptions as any[]) {
+        await db
+          .prepare(
+            "INSERT INTO decision_options (decision_id, text) VALUES (?, ?)",
+          )
+          .bind(newDecisionId, optionRow.text)
+          .run();
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, decisionId: newDecisionId }),
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    // POST /api/decisions/:id/recreate-from-tie - 基于平票创建新投票
+    if (
+      method === "POST" &&
+      path.match(/^\/api\/decisions\/\d+\/recreate-from-tie$/)
+    ) {
+      const parts = path.split("/");
+      const decisionId = parseInt(parts[parts.length - 2] || "0");
+      const { userId, duration, optionTexts } = await request.json();
+
+      if (!decisionId) {
+        return new Response(JSON.stringify({ error: "Invalid decision ID" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (!userId) {
+        return new Response(JSON.stringify({ error: "User not logged in" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      if (
+        !optionTexts ||
+        !Array.isArray(optionTexts) ||
+        optionTexts.length < 2
+      ) {
+        return new Response(JSON.stringify({ error: "至少需要2个选项" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      // 获取原投票信息
+      const originalDecision = await db
+        .prepare("SELECT * FROM decisions WHERE id = ?")
+        .bind(decisionId)
+        .first();
+
+      if (!originalDecision) {
+        return new Response(JSON.stringify({ error: "Decision not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      const validDurations: Record<string, number> = {
+        "1h": 60 * 60 * 1000,
+        "3h": 3 * 60 * 60 * 1000,
+        "5h": 5 * 60 * 60 * 1000,
+        "1d": 24 * 60 * 60 * 1000,
+      };
+
+      // 复用原来的 duration，如果没有则使用默认的 1d
+      const originalDuration = (originalDecision as any).duration;
+      const finalDuration = duration || originalDuration || "1d";
+      const durationMs =
+        validDurations[finalDuration] || validDurations["1d"];
+      const expiresAt = new Date(Date.now() + durationMs);
+
+      // 创建新投票
+      const decisionResult = await db
+        .prepare(
+          "INSERT INTO decisions (title, description, created_by, expires_at, duration) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(
+          (originalDecision as any).title || "",
+          (originalDecision as any).description || "",
+          userId,
+          expiresAt.toISOString(),
+          finalDuration
+        )
+        .run();
+
+      const newDecisionId = decisionResult.meta.last_row_id as number;
+
+      // 更新新投票的创建时间
+      await db
+        .prepare("UPDATE decisions SET created_at = ? WHERE id = ?")
+        .bind(new Date().toISOString(), newDecisionId)
+        .run();
+
+      // 只添加平票的选项
+      for (const optionText of optionTexts) {
+        if (optionText && optionText.trim()) {
+          await db
+            .prepare(
+              "INSERT INTO decision_options (decision_id, text) VALUES (?, ?)",
+            )
+            .bind(newDecisionId, optionText.trim())
+            .run();
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, decisionId: newDecisionId }),
         {
           headers: { "Content-Type": "application/json" },
         },

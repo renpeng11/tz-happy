@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import type { User, VoteData } from '../types';
+import { authApi, voteApi } from '../api';
 
 interface VoteContextType {
   voteData: VoteData;
@@ -19,12 +20,7 @@ export function VoteProvider({ children }: { children: ReactNode }) {
 
   const fetchVotes = useCallback(async () => {
     try {
-      const response = await fetch("/api/votes");
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "获取投票数据失败");
-      }
+      const result = await voteApi.getVotes();
 
       const hasValidVotes = typeof result === 'object' && result !== null &&
         result.hasOwnProperty('1') && result.hasOwnProperty('7');
@@ -51,18 +47,7 @@ export function VoteProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const response = await fetch("/api/votes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ routeId, userId: currentUser.id }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "投票失败");
-      }
-
-      const result = await response.json();
+      const result = await voteApi.castVote(routeId, currentUser.id);
       if (result.success) {
         setVoteData(result.votes);
         setCurrentUser(prev => ({
@@ -76,13 +61,13 @@ export function VoteProvider({ children }: { children: ReactNode }) {
           votedRoute: routeId,
         }));
         return true;
-      } else if (result.error) {
-        alert(result.error);
-        return false;
       }
-    } catch (error) {
-      console.error("Failed to cast vote:", error);
-      alert("投票失败，请检查网络连接或稍后重试");
+    } catch (error: any) {
+      if (error?.message) {
+        alert(error.message);
+      } else {
+        alert("投票失败，请检查网络连接或稍后重试");
+      }
       return false;
     }
     return false;
@@ -99,18 +84,7 @@ export function VoteProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const response = await fetch("/api/votes/reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser.id, routeId: currentUser.votedRoute }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "重置投票失败");
-      }
-
-      const result = await response.json();
+      const result = await voteApi.resetVote(currentUser.id, currentUser.votedRoute);
       if (result.success) {
         setVoteData(result.votes);
         setCurrentUser(prev => ({
@@ -139,17 +113,7 @@ export function VoteProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const response = await fetch("/api/votes/clear", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "清空投票失败");
-      }
-
-      const result = await response.json();
+      const result = await voteApi.clearAll();
       if (result.success) {
         setVoteData(result.votes);
         alert("所有投票数据已清空！");
@@ -194,18 +158,7 @@ export function VoteProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fingerprint }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "登录失败");
-      }
-
-      const result = await response.json();
+      const result = await authApi.login(fingerprint);
       if (result.success) {
         setCurrentUser(result.user);
         localStorage.setItem("current_user", JSON.stringify(result.user));

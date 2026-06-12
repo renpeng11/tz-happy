@@ -5,9 +5,10 @@ import SpotCard from "./SpotCard";
 import ExpenseChart from "./ExpenseChart";
 import ExpenseModal from "./ExpenseModal";
 import type { ExpenseItem, RouteExpenses } from "../types";
+import { expenseApi } from "../api";
 
 export default function ItineraryDetail() {
-  const { voteData, currentUser } = useVote();
+  const { voteData, currentUser, isLoading: isVoteLoading } = useVote();
   const [currentDay, setCurrentDay] = useState(1);
   const [showAllDays, setShowAllDays] = useState(false);
   const [expenses, setExpenses] = useState<RouteExpenses | null>(null);
@@ -37,14 +38,15 @@ export default function ItineraryDetail() {
   const routeId = winnerRoute?.id || 1;
 
   useEffect(() => {
-    loadExpenses();
-  }, [routeId]);
+    if (!isVoteLoading) {
+      loadExpenses();
+    }
+  }, [routeId, isVoteLoading]);
 
   const loadExpenses = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/expenses?routeId=${routeId}`);
-      const data = await response.json();
+      const data = await expenseApi.getList(routeId);
 
       const route = routesData.find((r) => r.id === routeId);
       if (!route) {
@@ -99,16 +101,11 @@ export default function ItineraryDetail() {
 
   const addExpense = async (day: number, expense: Omit<ExpenseItem, "id">) => {
     try {
-      const response = await fetch("/api/expenses", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          routeId,
-          day,
-          ...expense,
-        }),
+      const data = await expenseApi.add({
+        routeId,
+        day,
+        ...expense,
       });
-      const data = await response.json();
 
       if (data.success) {
         const newExpense = { ...expense, id: data.id.toString() };
@@ -139,10 +136,7 @@ export default function ItineraryDetail() {
 
   const deleteExpense = async (day: number, expenseId: string) => {
     try {
-      const response = await fetch(`/api/expenses/${expenseId}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
+      const data = await expenseApi.remove(expenseId);
 
       if (data.success) {
         setExpenses((prev) => {
@@ -172,10 +166,7 @@ export default function ItineraryDetail() {
 
   const clearAllExpenses = async () => {
     try {
-      const response = await fetch(`/api/expenses/all?routeId=${routeId}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
+      const data = await expenseApi.clearAll(routeId);
 
       if (data.success) {
         setExpenses((prev) => {

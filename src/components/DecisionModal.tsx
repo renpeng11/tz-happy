@@ -1,28 +1,13 @@
 import { useState, useEffect } from "react";
 import { useVote } from "../context/VoteContext";
+import { decisionApi, type DecisionOption, type Decision } from "../api";
 
 interface DecisionModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-interface DecisionOption {
-  id: number;
-  text: string;
-  votes: number;
-}
-
-interface Decision {
-  id: number;
-  title: string;
-  description: string;
-  created_at: string;
-  expires_at: string;
-  option_count: number;
-  total_votes: number;
-}
-
-type ViewMode = "list" | "create" | "vote" | "result";
+type ViewMode = "list" | "create" | "vote" | "result" | "announcement";
 
 const durationOptions = [
   { value: "1h", label: "1小时" },
@@ -106,17 +91,25 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
   const [countdowns, setCountdowns] = useState<Record<number, string>>({});
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [showWheel, setShowWheel] = useState(false);
   const [voteMode, setVoteMode] = useState<"direct" | "random">("direct");
   const [isSpinningCompleted, setIsSpinningCompleted] = useState(false);
   const [selectedOptionId, setSelectedOptionId] = useState<number | null>(null);
+  const [isReopening, setIsReopening] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmOption, setConfirmOption] = useState<{
+    id: number;
+    text: string;
+  } | null>(null);
+
+  const [shouldRefreshOnOpen, setShouldRefreshOnOpen] = useState(true);
 
   useEffect(() => {
-    if (isOpen && viewMode === "list") {
+    if (isOpen && viewMode === "list" && shouldRefreshOnOpen) {
       setIsLoading(true);
       loadDecisions();
+      setShouldRefreshOnOpen(false);
     }
-  }, [isOpen, viewMode]);
+  }, [isOpen, viewMode, shouldRefreshOnOpen]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -127,7 +120,7 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
           const expires = new Date(decision.expires_at).getTime();
           const diff = expires - now;
           if (diff <= 0) {
-            newCountdowns[decision.id] = "已过期";
+            // 已结束的投票不显示倒计时
           } else {
             const days = Math.floor(diff / (1000 * 60 * 60 * 24));
             const hours = Math.floor(
@@ -159,11 +152,8 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
 
   const loadDecisions = async () => {
     try {
-      const response = await fetch("/api/decisions");
-      const result = await response.json();
-      if (response.ok) {
-        setDecisions(result || []);
-      }
+      const result = await decisionApi.getList();
+      setDecisions(result || []);
     } catch (error) {
       console.error("Failed to load decisions:", error);
     } finally {
@@ -210,27 +200,24 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     setIsLoading(true);
 
     try {
-      const response = await fetch("/api/decisions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: title.trim(),
-          description: description.trim(),
-          options: validOptions,
-          userId: currentUser.id,
-          duration: selectedDuration,
-        }),
+      const result = await decisionApi.create({
+        title: title.trim(),
+        description: description.trim(),
+        options: validOptions,
+        userId: currentUser.id,
+        duration: selectedDuration,
       });
 
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "创建失败");
-      }
+      // 重置表单数据
+      setTitle("");
+      setDescription("");
+      setSelectedDuration("1d");
+      setOptions(["", ""]);
 
       setCurrentDecisionId(result.decisionId);
       await loadDecisionOptions(result.decisionId);
       await loadDecisions();
+      setShouldRefreshOnOpen(true);
       setViewMode("vote");
     } catch (error) {
       alert((error as Error).message);
@@ -241,18 +228,14 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
 
   const loadDecisionOptions = async (decisionId: number) => {
     try {
-      const response = await fetch(`/api/decisions/${decisionId}`);
-      const result = await response.json();
+      const result = await decisionApi.getDetail(decisionId);
 
-      if (response.ok && result.options) {
+      if (result.options) {
         setDecisionOptions(result.options);
       }
 
       if (currentUser) {
-        const voteResponse = await fetch(
-          `/api/decisions/${decisionId}/user-vote?userId=${currentUser.id}`,
-        );
-        const voteResult = await voteResponse.json();
+        const voteResult = await decisionApi.getUserVote(decisionId, currentUser.id);
         if (voteResult.hasVoted) {
           setUserVoted(voteResult.votedOptionId);
         }
@@ -262,17 +245,59 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     }
   };
 
+  const handleReopenVote = async () => {
+    if (!currentUser || !currentDecisionId) return;
+
+    setIsReopening(true);
+    try {
+      const result = await decisionApi.reopen(currentDecisionId, currentUser.id);
+
+      // 切换到新创建的投票
+      setCurrentDecisionId(result.decisionId);
+      await loadDecisionOptions(result.decisionId);
+      await loadDecisions();
+      setShouldRefreshOnOpen(true);
+      setViewMode("vote");
+    } catch (error) {
+      alert((error as Error).message);
+    } finally {
+      setIsReopening(false);
+    }
+  };
+
+  const handleCreateFromTie = async (tieOptionTexts: string[]) => {
+    if (!currentUser || !currentDecisionId) return;
+
+    setIsReopening(true);
+    try {
+      const result = await decisionApi.recreateFromTie(currentDecisionId, currentUser.id, tieOptionTexts);
+
+      // 切换到新创建的投票
+      setCurrentDecisionId(result.decisionId);
+      await loadDecisionOptions(result.decisionId);
+      await loadDecisions();
+      setShouldRefreshOnOpen(true);
+      setViewMode("vote");
+    } catch (error) {
+      alert((error as Error).message);
+    } finally {
+      setIsReopening(false);
+    }
+  };
+
   const handleSelectDecision = async (decisionId: number) => {
     const decision = decisions.find((d) => d.id === decisionId);
-    if (decision && isExpired(decision)) {
-      alert("该投票已过期");
-      return;
-    }
     setIsLoading(true);
     setCurrentDecisionId(decisionId);
     await loadDecisionOptions(decisionId);
-    const hasVoted = userVoted !== null;
-    setViewMode(hasVoted ? "result" : "vote");
+
+    if (decision && isExpired(decision)) {
+      setViewMode("announcement");
+    } else {
+      const hasVoted = userVoted !== null;
+      setViewMode(hasVoted ? "result" : "vote");
+    }
+
     setIsLoading(false);
   };
 
@@ -281,35 +306,14 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
 
     const decision = decisions.find((d) => d.id === currentDecisionId);
     if (decision && isExpired(decision)) {
-      alert("该投票已过期");
+      alert("该投票已结束");
       return;
     }
 
-    setIsLoading(true);
-
-    try {
-      const response = await fetch(`/api/decisions/${currentDecisionId}/vote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          optionId,
-          userId: currentUser.id,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "投票失败");
-      }
-
-      setDecisionOptions(result.options);
-      setUserVoted(optionId);
-      setViewMode("result");
-    } catch (error) {
-      alert((error as Error).message);
-    } finally {
-      setIsLoading(false);
+    const option = decisionOptions.find((o) => o.id === optionId);
+    if (option) {
+      setConfirmOption({ id: optionId, text: option.text });
+      setShowConfirmModal(true);
     }
   };
 
@@ -318,7 +322,7 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
 
     const decision = decisions.find((d) => d.id === currentDecisionId);
     if (decision && isExpired(decision)) {
-      alert("该投票已过期");
+      alert("该投票已结束");
       return;
     }
 
@@ -349,28 +353,17 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
   };
 
   const confirmVote = async () => {
-    if (!selectedOptionId || !currentUser || !currentDecisionId) return;
+    if (!confirmOption || !currentUser || userVoted || !currentDecisionId)
+      return;
 
+    setShowConfirmModal(false);
     setIsLoading(true);
 
     try {
-      const response = await fetch(`/api/decisions/${currentDecisionId}/vote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          optionId: selectedOptionId,
-          userId: currentUser.id,
-        }),
-      });
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error(result.error || "投票失败");
-      }
+      const result = await decisionApi.vote(currentDecisionId, confirmOption.id, currentUser.id);
 
       setDecisionOptions(result.options);
-      setUserVoted(selectedOptionId);
+      setUserVoted(confirmOption.id);
       setViewMode("result");
     } catch (error) {
       alert((error as Error).message);
@@ -391,6 +384,7 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     setIsSpinningCompleted(false);
     setSelectedOptionId(null);
     setVoteMode("direct");
+    setShouldRefreshOnOpen(true);
     onClose();
   };
 
@@ -400,15 +394,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
     }
 
     try {
-      const response = await fetch(`/api/decisions/${decisionId}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok) {
+      const data = await decisionApi.remove(decisionId);
+      if (data.success) {
+        // 直接刷新，不需要设置 shouldRefreshOnOpen，避免重复刷新
         loadDecisions();
-      } else {
-        const result = await response.json();
-        alert(result.error || "删除失败");
       }
     } catch (error) {
       alert("删除失败，请重试");
@@ -422,7 +411,11 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
       setDescription("");
       setSelectedDuration("1d");
       setOptions(["", ""]);
-    } else if (viewMode === "vote" || viewMode === "result") {
+    } else if (
+      viewMode === "vote" ||
+      viewMode === "result" ||
+      viewMode === "announcement"
+    ) {
       setViewMode("list");
       setCurrentDecisionId(null);
       setDecisionOptions([]);
@@ -431,7 +424,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
       setIsSpinningCompleted(false);
       setSelectedOptionId(null);
       setVoteMode("direct");
-      loadDecisions();
+      // 只有从个人投票结果页返回时才刷新，因为投票后数据有变化
+      if (viewMode === "result") {
+        setShouldRefreshOnOpen(true);
+      }
     }
   };
 
@@ -465,14 +461,15 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
           <div className="flex items-center gap-2">
             {(viewMode === "create" ||
               viewMode === "vote" ||
-              viewMode === "result") && (
-              <button
-                onClick={handleBack}
-                className="text-textLight hover:text-text transition-colors"
-              >
-                <i className="fas fa-arrow-left" />
-              </button>
-            )}
+              viewMode === "result" ||
+              viewMode === "announcement") && (
+                <button
+                  onClick={handleBack}
+                  className="text-textLight hover:text-text transition-colors"
+                >
+                  <i className="fas fa-arrow-left" />
+                </button>
+              )}
             <i className="fas fa-question-circle text-purple-500 text-2xl" />
             <h3 className="text-xl font-bold text-text">
               {viewMode === "list"
@@ -481,7 +478,9 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                   ? "创建投票"
                   : viewMode === "result"
                     ? "投票结果"
-                    : "投票"}
+                    : viewMode === "announcement"
+                      ? "投票结果公布"
+                      : "投票"}
             </h3>
           </div>
           <button
@@ -530,31 +529,27 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                         return (
                           <div
                             key={decision.id}
-                            className={`relative p-4 rounded-xl ${
-                              expired ? "bg-gray-50" : "bg-sky-50"
-                            }`}
+                            className={`relative p-4 rounded-xl ${expired ? "bg-gray-50" : "bg-sky-50"
+                              }`}
                           >
                             <button
                               onClick={() => handleSelectDecision(decision.id)}
-                              disabled={expired}
-                              className={`w-full text-left transition-colors pr-10 ${
-                                expired
-                                  ? "cursor-not-allowed opacity-60"
-                                  : "hover:bg-sky-100"
-                              }`}
+                              className={`w-full text-left transition-colors pr-10 ${expired
+                                ? "bg-gray-50 hover:bg-gray-100"
+                                : "hover:bg-sky-100"
+                                }`}
                             >
                               <div className="flex items-center justify-between mb-2">
                                 <div className="font-semibold text-text">
                                   {decision.title || "未命名投票"}
                                 </div>
                                 <span
-                                  className={`text-xs px-2 py-0.5 rounded-full ${
-                                    expired
-                                      ? "bg-red-100 text-red-600"
-                                      : "bg-green-100 text-green-600"
-                                  }`}
+                                  className={`text-xs px-2 py-0.5 rounded-full ${expired
+                                    ? "bg-amber-100 text-amber-700"
+                                    : "bg-green-100 text-green-600"
+                                    }`}
                                 >
-                                  {expired ? "已过期" : "进行中"}
+                                  {expired ? "已结束" : "进行中"}
                                 </span>
                               </div>
                               <div className="flex items-center justify-between text-xs text-textLight">
@@ -562,13 +557,11 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                                   {decision.option_count} 个选项 ·{" "}
                                   {decision.total_votes} 票
                                 </span>
-                                <span
-                                  className={
-                                    expired ? "text-red-500" : "text-orange-500"
-                                  }
-                                >
-                                  {countdowns[decision.id]}
-                                </span>
+                                {countdowns[decision.id] && (
+                                  <span className="text-orange-500">
+                                    {countdowns[decision.id]}
+                                  </span>
+                                )}
                               </div>
                               <div className="text-xs text-textLight mt-1">
                                 {formatDate(decision.created_at)}
@@ -635,11 +628,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                     <button
                       key={option.value}
                       onClick={() => setSelectedDuration(option.value)}
-                      className={`py-2 rounded-lg text-xs font-medium transition-colors ${
-                        selectedDuration === option.value
-                          ? "bg-purple-500 text-white"
-                          : "bg-sky-50 text-text hover:bg-sky-100"
-                      }`}
+                      className={`py-2 rounded-lg text-xs font-medium transition-colors ${selectedDuration === option.value
+                        ? "bg-purple-500 text-white"
+                        : "bg-sky-50 text-text hover:bg-sky-100"
+                        }`}
                     >
                       {option.label}
                     </button>
@@ -741,11 +733,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                       <div className="flex bg-sky-50 rounded-xl p-1">
                         <button
                           onClick={() => setVoteMode("direct")}
-                          className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-                            voteMode === "direct"
-                              ? "bg-white text-text shadow-sm"
-                              : "text-textLight hover:text-text"
-                          }`}
+                          className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${voteMode === "direct"
+                            ? "bg-white text-text shadow-sm"
+                            : "text-textLight hover:text-text"
+                            }`}
                         >
                           <i className="fas fa-hand-pointer mr-1.5" />
                           我有想法
@@ -756,11 +747,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                             setIsSpinningCompleted(false);
                             setSelectedOptionId(null);
                           }}
-                          className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
-                            voteMode === "random"
-                              ? "bg-white text-text shadow-sm"
-                              : "text-textLight hover:text-text"
-                          }`}
+                          className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-all ${voteMode === "random"
+                            ? "bg-white text-text shadow-sm"
+                            : "text-textLight hover:text-text"
+                            }`}
                         >
                           <i className="fas fa-shuffle mr-1.5" />
                           我都可以
@@ -797,11 +787,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                                 expired ||
                                 voteMode === "random"
                               }
-                              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between group ${
-                                isSelected
-                                  ? "bg-purple-100 border-2 border-purple-400"
-                                  : "bg-sky-50 hover:bg-sky-100"
-                              } ${userVoted || isLoading || expired || voteMode === "random" ? "cursor-default" : "hover:shadow-sm"}`}
+                              className={`w-full text-left px-4 py-3 rounded-xl transition-all flex items-center justify-between group ${isSelected
+                                ? "bg-purple-100 border-2 border-purple-400"
+                                : "bg-sky-50 hover:bg-sky-100"
+                                } ${userVoted || isLoading || expired || voteMode === "random" ? "cursor-default" : "hover:shadow-sm"}`}
                             >
                               <div className="flex items-center gap-2">
                                 <span className="text-text font-medium">
@@ -870,7 +859,7 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                                       d={`M 100 100 L ${x1} ${y1} A 90 90 0 ${largeArcFlag} 1 ${x2} ${y2} Z`}
                                       fill={
                                         WHEEL_COLORS[
-                                          index % WHEEL_COLORS.length
+                                        index % WHEEL_COLORS.length
                                         ]
                                       }
                                       stroke="white"
@@ -961,7 +950,18 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                               重新转动
                             </button>
                             <button
-                              onClick={confirmVote}
+                              onClick={() => {
+                                const selectedOption = decisionOptions.find(
+                                  (o) => o.id === selectedOptionId,
+                                );
+                                if (selectedOption) {
+                                  setConfirmOption({
+                                    id: selectedOption.id,
+                                    text: selectedOption.text,
+                                  });
+                                  setShowConfirmModal(true);
+                                }
+                              }}
                               disabled={isLoading}
                               className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
@@ -1014,11 +1014,10 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
                   return (
                     <div
                       key={option.id}
-                      className={`w-full text-left px-4 py-3 rounded-xl ${
-                        isSelected
-                          ? "bg-purple-100 border-2 border-purple-400"
-                          : "bg-sky-50"
-                      }`}
+                      className={`w-full text-left px-4 py-3 rounded-xl ${isSelected
+                        ? "bg-purple-100 border-2 border-purple-400"
+                        : "bg-sky-50"
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -1046,8 +1045,240 @@ export default function DecisionModal({ isOpen, onClose }: DecisionModalProps) {
               </div>
             </div>
           )}
+
+          {viewMode === "announcement" && (
+            <div className="space-y-4">
+              {(() => {
+                // 计算总票数
+                const totalVotesCount = decisionOptions.reduce(
+                  (sum, option) => sum + option.votes,
+                  0,
+                );
+
+                // 找到最高票数
+                const maxVotes = Math.max(
+                  ...decisionOptions.map((o) => o.votes),
+                );
+
+                // 找到所有票数等于最高票数的选项
+                const topOptions = decisionOptions.filter(
+                  (o) => o.votes === maxVotes,
+                );
+                const hasTie = topOptions.length > 1 && maxVotes > 0;
+                const hasNoVotes = totalVotesCount === 0;
+                const hasWinner =
+                  !hasNoVotes && !hasTie && topOptions.length === 1;
+
+                return (
+                  <>
+                    {/* 情况1：没有人投票 */}
+                    {hasNoVotes && (
+                      <div className="bg-gradient-to-r from-slate-400 to-slate-500 rounded-xl p-4 text-center text-white mb-4">
+                        <div className="text-3xl mb-2">🤐</div>
+                        <div className="font-bold text-lg">投票结果公布！</div>
+                        <div className="text-sm opacity-90 mt-1">
+                          没有人投票，要不要再开一次？
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 情况2：有平票 */}
+                    {hasTie && (
+                      <div className="bg-gradient-to-r from-blue-400 to-indigo-500 rounded-xl p-4 text-center text-white mb-4">
+                        <div className="text-3xl mb-2">🤝</div>
+                        <div className="font-bold text-lg">投票结果公布！</div>
+                        <div className="text-sm opacity-90 mt-1">
+                          平票了！要不要基于这些选项再投一次？
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 情况3：有获胜者 */}
+                    {hasWinner && (
+                      <div className="bg-gradient-to-r from-green-500 to-emerald-600 rounded-xl p-4 text-center text-white mb-4">
+                        <div className="text-3xl mb-2">🏆</div>
+                        <div className="font-bold text-lg">投票结果公布！</div>
+                        <div className="text-sm opacity-90 mt-1">
+                          获胜项：{topOptions[0].text} ({topOptions[0].votes}{" "}
+                          票)
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-semibold text-text">
+                          {currentDecision?.title || "未命名投票"}
+                        </div>
+                        {currentDecision?.description && (
+                          <div className="text-sm text-textLight mt-1">
+                            {currentDecision.description}
+                          </div>
+                        )}
+                      </div>
+                      <span className="text-xs text-textLight">
+                        {totalVotesCount} 票
+                      </span>
+                    </div>
+
+                    <p className="text-textLight text-sm">投票详情：</p>
+
+                    <div className="space-y-3">
+                      {decisionOptions.map((option) => {
+                        const isWinner =
+                          hasWinner && topOptions[0].id === option.id;
+                        const isTie =
+                          hasTie && topOptions.some((t) => t.id === option.id);
+
+                        return (
+                          <div
+                            key={option.id}
+                            className={`w-full text-left px-4 py-3 rounded-xl ${isWinner
+                              ? "bg-green-100 border-2 border-green-400"
+                              : isTie
+                                ? "bg-blue-100 border-2 border-blue-400"
+                                : "bg-sky-50"
+                              }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                {isWinner && (
+                                  <i className="fas fa-trophy text-green-500" />
+                                )}
+                                {isTie && (
+                                  <i className="fas fa-handshake text-blue-500" />
+                                )}
+                                <span className="text-text font-medium">
+                                  {option.text}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-textLight">
+                                  {option.votes} 票
+                                </span>
+                                {isWinner && (
+                                  <span className="text-xs text-green-500 font-medium">
+                                    获胜
+                                  </span>
+                                )}
+                                {isTie && (
+                                  <span className="text-xs text-blue-500 font-medium">
+                                    平票
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* 没有人投票时显示重新开启按钮 */}
+                    {hasNoVotes && (
+                      <button
+                        onClick={handleReopenVote}
+                        disabled={isReopening}
+                        className="w-full bg-gradient-to-r from-slate-500 to-slate-600 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                      >
+                        {isReopening ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                            正在重新开启...
+                          </>
+                        ) : (
+                          <>
+                            <i className="fas fa-redo" />
+                            重新开启投票
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* 平票时显示创建新投票按钮 */}
+                    {hasTie && (
+                      <button
+                        onClick={() =>
+                          handleCreateFromTie(topOptions.map((t) => t.text))
+                        }
+                        disabled={isReopening}
+                        className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-70 flex items-center justify-center gap-2"
+                      >
+                        {isReopening ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                            正在创建新投票...
+                          </>
+                        ) : (
+                          <>
+                            <i className="fas fa-plus-circle" />
+                            基于平票选项创建新投票
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* 确认投票弹窗 */}
+      {showConfirmModal && confirmOption && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
+          onClick={() => {
+            setShowConfirmModal(false);
+            setConfirmOption(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-center">
+              <div className="text-5xl mb-4">🤔</div>
+              <h3 className="text-xl font-bold text-text mb-2">确认投票</h3>
+              <p className="text-textLight mb-6">
+                你确定要选择：
+                <br />
+                <span className="font-semibold text-purple-600">
+                  {confirmOption.text}
+                </span>
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowConfirmModal(false);
+                    setConfirmOption(null);
+                  }}
+                  className="flex-1 bg-gray-100 text-text font-semibold py-3 rounded-xl hover:bg-gray-200 transition-all"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={confirmVote}
+                  disabled={isLoading}
+                  className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 text-white font-semibold py-3 rounded-xl hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                      投票中...
+                    </>
+                  ) : (
+                    <>
+                      <i className="fas fa-check" />
+                      确认
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

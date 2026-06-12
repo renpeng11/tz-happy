@@ -14,7 +14,7 @@ export default function ItineraryHeader({
   onOpenPoem,
   onOpenDecision,
 }: ItineraryHeaderProps) {
-  const { voteData, currentUser } = useVote();
+  const { voteData, currentUser, isLoading: isVoteLoading } = useVote();
   const [countdown, setCountdown] = useState({
     days: 0,
     hours: 0,
@@ -40,7 +40,7 @@ export default function ItineraryHeader({
   const route = winnerRoute();
 
   useEffect(() => {
-    const targetDate = new Date("2026-06-17T08:00:00");
+    const targetDate = new Date("2026-06-19T08:00:00");
 
     const updateCountdown = () => {
       const now = new Date();
@@ -82,10 +82,10 @@ export default function ItineraryHeader({
                 </h1>
                 <div className="text-sky-100 text-sm">
                   <div className="font-semibold">
-                    {route?.title || "获胜路线"}
+                    {isVoteLoading ? "加载中..." : route?.title || "获胜路线"}
                   </div>
                   <div className="text-xs opacity-80 mt-0.5">
-                    {route?.description || "精心规划的旅程"}
+                    {isVoteLoading ? "" : route?.description || "精心规划的旅程"}
                   </div>
                 </div>
               </div>
